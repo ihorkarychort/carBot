@@ -1,16 +1,33 @@
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const { extractDataFromImage, extractDataFromVehicleDoc } = require("./mindeeHelper");
+const express = require("express");
+const bodyParser = require("body-parser");
 
 // Load credentials
 const token = process.env.TELEGRAM_BOT_TOKEN;
-if (!token) {
-  console.error("Missing TELEGRAM_BOT_TOKEN");
+const webhookUrl = process.env.WEBHOOK_URL; // Add your webhook URL here
+if (!token || !webhookUrl) {
+  console.error("Missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL");
   process.exit(1);
 }
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token);
+const app = express();
+const port = process.env.PORT || 3000;
 
+// Use bodyParser to handle incoming requests
+app.use(bodyParser.json());
+
+// Set the webhook
+bot.setWebHook(`${webhookUrl}/bot${token}`);
+
+// Handle incoming updates (Webhook)
+app.post(`/bot${token}`, (req, res) => {
+  const update = req.body;
+  bot.processUpdate(update);
+  res.sendStatus(200); // Respond with HTTP status 200 to acknowledge receipt
+});
 
 // User state tracking
 const userStates = {}; // { chatId: { stage, passportData, vidData, passportPhotoUrl, vehiclePhotoUrl } }
@@ -21,7 +38,7 @@ bot.onText(/\/start/, (msg) => {
   userStates[chatId] = { stage: "awaiting_passport" };
 
   const welcomeMessage = `👋 Welcome! I'm your insurance assistant bot.
-
+  
 I help you with the process of purchasing car insurance. Please follow the instructions to upload your passport and vehicle documents.
 
 Here are the available commands:
@@ -214,14 +231,7 @@ function handleBotError(chatId, error) {
   bot.sendMessage(chatId, "❌ Something went wrong. Please try again later.").catch(error => console.error("Error sending error message: ", error));
 }
 
-// Dummy HTTP server to keep Render Web Service alive
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('🤖 Telegram bot is running via polling.\n');
-}).listen(PORT, () => {
-  console.log(`HTTP server is listening on port ${PORT}`);
+// Start the Express server to handle webhooks
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
-
